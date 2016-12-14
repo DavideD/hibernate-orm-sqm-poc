@@ -21,6 +21,9 @@ import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 
 import org.hibernate.boot.MetadataSources;
+import org.hibernate.cypher.convert.spi.CypherAstSelectInterpreter;
+import org.hibernate.cypher.convert.spi.CypherSelectInterpretation;
+import org.hibernate.cypher.convert.spi.SqmSelectToCypherAstConverter;
 import org.hibernate.query.proposed.QueryParameter;
 import org.hibernate.query.proposed.internal.ParameterMetadataImpl;
 import org.hibernate.query.proposed.internal.QueryParameterBindingsImpl;
@@ -29,8 +32,6 @@ import org.hibernate.query.proposed.internal.QueryParameterPositionalImpl;
 import org.hibernate.query.proposed.spi.QueryParameterBindings;
 import org.hibernate.sql.QueryParameterBindingTypeResolverImpl;
 import org.hibernate.sql.ast.SelectQuery;
-import org.hibernate.sql.convert.spi.SelectStatementInterpreter;
-import org.hibernate.sql.convert.spi.cypher.CypherTreeWalker;
 import org.hibernate.sqm.query.SqmSelectStatement;
 import org.hibernate.sqm.query.SqmStatement;
 import org.junit.Test;
@@ -152,20 +153,32 @@ public class CypherTreeWalkerSmokeTest extends BaseUnitTest {
 	}
 
 	private void assertConversion(String hqlQuery, String cypherQuery) {
-		final SqmSelectStatement statement = (SqmSelectStatement) interpret( hqlQuery );
+		CypherSelectInterpretation cypherSelect = buildCypherSelectInterpretation( hqlQuery );
 
-		final SelectStatementInterpreter interpreter = new SelectStatementInterpreter( queryOptions(), callBack() );
-		interpreter.interpret( statement );
+		assertThat( cypherSelect.getCypher(), equalTo( cypherQuery ) );
+	}
 
-		SelectQuery sqlTree = interpreter.getSelectQuery();
+	private CypherSelectInterpretation buildCypherSelectInterpretation(String queryString) {
+		return buildCypherSelectInterpretation( queryString, false );
+	}
 
-		CypherTreeWalker cypherTreeWalker = new CypherTreeWalker(
+	private CypherSelectInterpretation buildCypherSelectInterpretation(String queryString, boolean shallow) {
+		final SqmSelectStatement statement = (SqmSelectStatement) interpret( queryString );
+
+		final SelectQuery sqlTree = SqmSelectToCypherAstConverter.interpret(
+				statement,
+				getSessionFactory(),
+				getConsumerContext().getDomainMetamodel(),
+				queryOptions(),
+				callBack()
+		);
+
+		return CypherAstSelectInterpreter.interpret(
+				sqlTree,
+				shallow,
 				getSessionFactory(),
 				buildQueryParameterBindings( statement )
 		);
-		cypherTreeWalker.visitSelectQuery( sqlTree );
-
-		assertThat( cypherTreeWalker.getCypher(), equalTo( cypherQuery ) );
 	}
 
 	private QueryParameterBindings buildQueryParameterBindings(SqmSelectStatement statement) {
